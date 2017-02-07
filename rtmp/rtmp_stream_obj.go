@@ -2,19 +2,15 @@ package rtmp
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"sync"
-	//"sync/atomic"
 	"time"
 )
 
 const (
 	DEFAULT_POOL_SIZE = 4096
 )
-
-var ErrBufferFull = errors.New("buffer full")
 
 var pool = NewMediaFramePool(DEFAULT_POOL_SIZE)
 
@@ -72,20 +68,7 @@ func NewMediaFramePool(size int) *MediaFramePool {
 
 func (p *MediaFramePool) New() *MediaFrame {
 	var x *MediaFrame
-	// select {
-	// case x = <-p.pool:
-	// 	x.count = 1
-	// 	x.Idx = 0
-	// 	x.Timestamp = 0
-	// 	x.VideoFrameType = 0
-	// 	x.VideoCodecID = 0
-	// 	x.AudioFormat = 0
-	// 	x.SamplingRate = 0
-	// 	x.SampleLength = 0
-	// 	x.Payload.Reset()
-	// default:
 	x = &MediaFrame{count: 1, p: p, Payload: bytes.NewBuffer(nil)}
-	//}
 	return x
 }
 
@@ -100,9 +83,6 @@ type NetStream interface {
 type MediaGop struct {
 	idx    int
 	frames []*MediaFrame
-	//freshChunk *RtmpChunker
-	//chunk      *RtmpChunker
-	//audio bool
 	videoConfig *MediaFrame
 	audioConfig *MediaFrame
 	metaConfig  *MediaFrame
@@ -120,8 +100,7 @@ type StreamObject struct {
 	name     string
 	duration uint32
 	list     []int
-	cache    map[int]*MediaGop //cmap.ConcurrentMap
-	//gopcache map[int]*MediaGop
+	cache    map[int]*MediaGop
 	subs               []NetStream
 	subch              chan NetStream
 	sublock            sync.RWMutex
@@ -133,7 +112,6 @@ type StreamObject struct {
 	metaData           *MediaFrame
 	firstVideoKeyFrame *MediaFrame
 	firstAudioKeyFrame *MediaFrame
-	//lastVideoKeyFrame  *MediaFrame
 	gop      *MediaGop
 	streamid uint32
 }
@@ -213,32 +191,11 @@ func (m *StreamObject) WriteFrame(s *MediaFrame) (err error) {
 		m.cache[gop.idx] = gop
 		log.Info("Gop", m.name, gop.idx, gop.Len(), len(m.list))
 		m.gop = &MediaGop{gop.idx + 1, []*MediaFrame{s}, m.firstVideoKeyFrame, m.firstAudioKeyFrame, m.metaData}
-		// m.gop.chunk.wchunks = gop.chunk.wchunks
-		// m.gop.freshChunk.writeMetadata(m.metaData)
-		// m.gop.freshChunk.writeFullVideo(m.firstVideoKeyFrame)
-		// m.gop.freshChunk.writeFullAudio(m.firstAudioKeyFrame)
-		// m.gop.freshChunk.writeFullVideo(s)
-		// m.gop.chunk.writeVideo(s)
 		m.lock.Unlock()
-		select {
-		case m.notify <- &gop.idx:
-		default:
-			err = ErrBufferFull
-		}
+		m.notify <- &gop.idx
 		return
 	}
 	m.gop.frames = append(m.gop.frames, s)
-	// if s.Type == RTMP_MSG_VIDEO {
-	// 	m.gop.freshChunk.writeVideo(s)
-	// 	m.gop.chunk.writeVideo(s)
-	// } else if s.Type == RTMP_MSG_AUDIO {
-	// 	if !m.gop.audio {
-	// 		m.gop.freshChunk.writeFullAudio(s)
-	// 	} else {
-	// 		m.gop.freshChunk.writeAudio(s)
-	// 	}
-	// 	m.gop.chunk.writeAudio(s)
-	// }
 	m.lock.Unlock()
 	return
 }

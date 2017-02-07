@@ -157,7 +157,7 @@ func serve(srv *Server, con net.Conn) {
 		return
 	}
 	conn.connected = true
-	newNetStream(conn, shandler, nil).readLoop()
+	newNetStream(conn, shandler).readLoop()
 }
 
 func getNumber(obj interface{}, key string) float64 {

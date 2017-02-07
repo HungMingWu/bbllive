@@ -11,13 +11,6 @@ type ServerHandler interface {
 	OnError(s *RtmpNetStream, err error)
 }
 
-type ClientHandler interface {
-	OnPublishStart(s *RtmpNetStream) error
-	OnPlayStart(s *RtmpNetStream) error
-	OnClosed(s *RtmpNetStream)
-	OnError(s *RtmpNetStream, err error)
-}
-
 type DefaultClientHandler struct {
 }
 

@@ -71,21 +71,15 @@ type SharedObject interface {
 
 type RtmpNetStream struct {
 	conn *RtmpNetConnection
-	// metaData           *MediaFrame
-	// firstVideoKeyFrame *MediaFrame
-	// firstAudioKeyFrame *MediaFrame
-	// lastVideoKeyFrame  *MediaFrame
 	path         string
 	bufferTime   time.Duration
 	bufferLength uint64
 	bufferLoad   uint64
 	lock         sync.RWMutex // guards the following
 	sh           ServerHandler
-	ch           ClientHandler
 	mode         int
 	vkfsended    bool
 	akfsended    bool
-	//mrev_duration uint32
 	vsend_time uint32
 	asend_time uint32
 	notify     chan *int
@@ -96,12 +90,11 @@ type RtmpNetStream struct {
 	closed     chan bool
 }
 
-func newNetStream(conn *RtmpNetConnection, sh ServerHandler, ch ClientHandler) (s *RtmpNetStream) {
+func newNetStream(conn *RtmpNetConnection, sh ServerHandler) (s *RtmpNetStream) {
 	s = new(RtmpNetStream)
 	s.nsid = nsid()
 	s.conn = conn
 	s.sh = sh
-	s.ch = ch
 	s.notify = make(chan *int, 30)
 	s.closed = make(chan bool)
 	return
@@ -144,13 +137,6 @@ func (s *RtmpNetStream) Notify(idx *int) error {
 	if s.isClosed() {
 		return errors.New("remote connection " + s.conn.remoteAddr + " closed")
 	}
-	//var err error
-	// s.lock.RLock()
-	// err = s.err
-	// s.lock.RUnlock()
-	// if err != nil {
-	// 	return err
-	// }
 
 	select {
 	case s.notify <- idx:
@@ -183,15 +169,6 @@ func (s *RtmpNetStream) writeLoop() {
 
 			gop = obj.ReadGop(idx)
 			if gop != nil {
-				// if s.vkfsended {
-				// 	err = write(s.conn, gop.freshChunk.Bytes())
-				// 	s.vkfsended = true
-				// } else {
-				// 	err = write(s.conn, gop.chunk.Bytes())
-				// }
-				// if err != nil {
-				// 	log.Error(s.conn.remoteAddr, err)
-				// }
 				frames := gop.frames[:]
 				for _, frame := range frames {
 					//log.Info("=====Frame1", frame, *idx)
@@ -219,64 +196,6 @@ func (s *RtmpNetStream) StreamObject() *StreamObject {
 	return s.obj
 }
 
-func (s *RtmpNetStream) play(streamName string, args ...Args) error {
-	s.streamName = streamName
-	conn := s.conn
-	s.mode = MODE_PRODUCER
-	sendCreateStream(conn)
-	for {
-		msg, err := readMessage(conn)
-		if err != nil {
-			return err
-		}
-
-		if m, ok := msg.(*UnknowCommandMessage); ok {
-			log.Debug(m)
-			continue
-		}
-		reply := new(ReplyCreateStreamMessage)
-		reply.Decode0(msg.Header(), msg.Body())
-		log.Debug(reply)
-		conn.streamid = reply.StreamId
-		break
-	}
-	sendPlay(conn, streamName, 0, 0, false)
-	for {
-		msg, err := readMessage(conn)
-		if err != nil {
-			return err
-		}
-		if m, ok := msg.(*UnknowCommandMessage); ok {
-			log.Debug(m)
-			continue
-		}
-		result := new(ReplyPlayMessage)
-		result.Decode0(msg.Header(), msg.Body())
-		log.Debug(result)
-		code := getString(result.Object, "code")
-		if code == NetStream_Play_Reset {
-			continue
-		} else if code == NetStream_Play_Start {
-			break
-		} else {
-			return errors.New(code)
-		}
-	}
-	sendSetBufferMessage(conn)
-	if strings.HasSuffix(conn.app, "/") {
-		s.path = conn.app + strings.Split(streamName, "?")[0]
-	} else {
-		s.path = conn.app + "/" + strings.Split(streamName, "?")[0]
-	}
-
-	err := s.notifyPlaying()
-	if err != nil {
-		return err
-	}
-	go s.readLoop()
-	return nil
-}
-
 func (s *RtmpNetStream) BufferTime() time.Duration {
 	return s.bufferTime
 }
@@ -287,16 +206,6 @@ func (s *RtmpNetStream) BufferLength() uint64 {
 	return s.bufferLength
 }
 
-// func (s *RtmpNetStream) sendFrame(frame *MediaFrame) error {
-// 	if frame.Type == RTMP_MSG_VIDEO {
-// 		s.vsend_time = frame.Timestamp
-// 		return s.sendVideo(frame)
-// 	} else if frame.Type == RTMP_MSG_AUDIO {
-// 		s.asend_time = frame.Timestamp
-// 		return s.sendAudio(frame)
-// 	}
-// 	return nil
-// }
 func (s *RtmpNetStream) sendVideo(video *MediaFrame) error {
 	if s.vkfsended {
 		return sendVideo(s.conn, video)
@@ -414,7 +323,6 @@ func (s *RtmpNetStream) readLoop() {
 				if err != nil {
 					log.Warn(err)
 				}
-				//s.videochan <- sp
 				log.Debug("IN", " <<<<<<< ", mm)
 			} else if csm, ok := msg.(*CreateStreamMessage); ok {
 				log.Debug("IN", " <<<<<<< ", csm)
@@ -520,18 +428,12 @@ func (s *RtmpNetStream) notifyPublishing() error {
 	if s.sh != nil {
 		return s.sh.OnPublishing(s)
 	}
-	if s.ch != nil {
-		return s.ch.OnPublishStart(s)
-	}
 	return errors.New("Handler Not Found")
 }
 
 func (s *RtmpNetStream) notifyPlaying() error {
 	if s.sh != nil {
 		return s.sh.OnPlaying(s)
-	}
-	if s.ch != nil {
-		return s.ch.OnPlayStart(s)
 	}
 	return errors.New("Handler Not Found")
 }
@@ -540,16 +442,10 @@ func (s *RtmpNetStream) notifyError(err error) {
 	if s.sh != nil {
 		s.sh.OnError(s, err)
 	}
-	if s.ch != nil {
-		s.ch.OnError(s, err)
-	}
 }
 
 func (s *RtmpNetStream) notifyClosed() {
 	if s.sh != nil {
 		s.sh.OnClosed(s)
-	}
-	if s.ch != nil {
-		s.ch.OnClosed(s)
 	}
 }
