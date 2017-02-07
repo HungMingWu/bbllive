@@ -54,20 +54,6 @@ func (p *MediaFrame) String() string {
 	return fmt.Sprintf("%v Frame Timestamp/%v Type/%v Payload/%v StreamId/%v", p.Idx, p.Timestamp, p.Type, p.Payload.Len(), p.StreamId)
 }
 
-func (o *MediaFrame) Ref() *MediaFrame {
-	//atomic.AddInt32(&o.count, 1)
-	return o
-}
-
-func (o *MediaFrame) Release() {
-	// if nc := atomic.AddInt32(&o.count, -1); nc <= 0 {
-	// 	select {
-	// 	case o.p.pool <- o:
-	// 	default:
-	// 	}
-	// }
-}
-
 func (o *MediaFrame) Bytes() []byte {
 	return o.Payload.Bytes()
 }
@@ -123,14 +109,7 @@ type MediaGop struct {
 }
 
 func (o *MediaGop) Release() {
-	for _, f := range o.frames {
-		f.Release()
-	}
 	o.frames = o.frames[0:0]
-	//o.freshChunk.Reset()
-	//o.chunk.Reset()
-	//o.freshChunk = nil
-	//o.chunk = nil
 }
 
 func (o *MediaGop) Len() int {
