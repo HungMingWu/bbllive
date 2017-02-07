@@ -2,7 +2,7 @@
 package main
 
 import (
-	"bbllive/rtmp"
+	"../../bbllive/rtmp"
 	"flag"
 	"log"
 	"net/http"

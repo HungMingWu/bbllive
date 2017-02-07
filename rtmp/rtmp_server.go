@@ -1,7 +1,7 @@
 package rtmp
 
 import (
-	"bbllive/util"
+	"../../bbllive/util"
 	"flag"
 	"github.com/sdming/gosnow"
 	cmap "github.com/streamrail/concurrent-map"

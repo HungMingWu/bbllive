@@ -1,7 +1,7 @@
 package rtmp
 
 import (
-	"bbllive/util"
+	"../../bbllive/util"
 	"bufio"
 	"bytes"
 	"errors"
