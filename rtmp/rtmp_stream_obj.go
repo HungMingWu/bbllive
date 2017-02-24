@@ -81,8 +81,8 @@ type NetStream interface {
 	StreamObject() *StreamObject
 }
 type MediaGop struct {
-	idx    int
-	frames []*MediaFrame
+	idx         int
+	frames      []*MediaFrame
 	videoConfig *MediaFrame
 	audioConfig *MediaFrame
 	metaConfig  *MediaFrame
@@ -97,10 +97,10 @@ func (o *MediaGop) Len() int {
 }
 
 type StreamObject struct {
-	name     string
-	duration uint32
-	list     []int
-	cache    map[int]*MediaGop
+	name               string
+	duration           uint32
+	list               []int
+	cache              map[int]*MediaGop
 	subs               []NetStream
 	subch              chan NetStream
 	sublock            sync.RWMutex
@@ -112,8 +112,8 @@ type StreamObject struct {
 	metaData           *MediaFrame
 	firstVideoKeyFrame *MediaFrame
 	firstAudioKeyFrame *MediaFrame
-	gop      *MediaGop
-	streamid uint32
+	gop                *MediaGop
+	streamid           uint32
 }
 
 func new_streamObject(sid string, timeout time.Duration, record bool, csize int) (obj *StreamObject, err error) {

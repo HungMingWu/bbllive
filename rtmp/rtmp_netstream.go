@@ -70,7 +70,7 @@ type SharedObject interface {
 }
 
 type RtmpNetStream struct {
-	conn *RtmpNetConnection
+	conn         *RtmpNetConnection
 	path         string
 	bufferTime   time.Duration
 	bufferLength uint64
@@ -80,14 +80,14 @@ type RtmpNetStream struct {
 	mode         int
 	vkfsended    bool
 	akfsended    bool
-	vsend_time uint32
-	asend_time uint32
-	notify     chan *int
-	obj        *StreamObject
-	streamName string
-	nsid       int
-	err        error
-	closed     chan bool
+	vsend_time   uint32
+	asend_time   uint32
+	notify       chan *int
+	obj          *StreamObject
+	streamName   string
+	nsid         int
+	err          error
+	closed       chan bool
 }
 
 func newNetStream(conn *RtmpNetConnection, sh ServerHandler) (s *RtmpNetStream) {

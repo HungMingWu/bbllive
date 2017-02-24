@@ -1,8 +1,8 @@
 package bbllive
 
 import (
-	"github.com/vuleetu/goconfig/config"
 	log "github.com/cihub/seelog"
+	"github.com/vuleetu/goconfig/config"
 	"os"
 	"path/filepath"
 )
