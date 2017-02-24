@@ -158,42 +158,37 @@ func (c *RtmpNetConnection) URL() string {
 	return c.url
 }
 
-func writeMessage(p *RtmpNetConnection, msg RtmpMessage) (err error) {
-	if p.writesequencenum > p.bandwidth {
-		p.totalwritebytes += p.writesequencenum
-		p.writesequencenum = 0
-		sendAck(p, p.totalwritebytes)
-		sendPing(p)
-	}
-	log.Debug(p.remoteAddr, " >>>>> ", msg)
-	chunk, reset, err := encodeChunk12(msg.Header(), msg.Body(), p.writeChunkSize)
+func writeMessage(conn *RtmpNetConnection, msg RtmpMessage) (err error) {
+	updateWriteSeq(conn)
+	log.Debug(conn.remoteAddr, " >>>>> ", msg)
+	chunk, reset, err := encodeChunk12(msg.Header(), msg.Body(), conn.writeChunkSize)
 	if err != nil {
 		return
 	}
-	_, err = p.bw.Write(chunk)
+	_, err = conn.bw.Write(chunk)
 	if err != nil {
 		return
 	}
-	err = p.bw.Flush()
+	err = conn.bw.Flush()
 	if err != nil {
 		return
 	}
-	p.writesequencenum += uint32(len(chunk))
+	conn.writesequencenum += uint32(len(chunk))
 	//log.Debug(">>>>> chunk ", len(chunk), " reset ", len(reset))
 	for reset != nil && len(reset) > 0 {
-		chunk, reset, err = encodeChunk1(msg.Header(), reset, p.writeChunkSize)
+		chunk, reset, err = encodeChunk1(msg.Header(), reset, conn.writeChunkSize)
 		if err != nil {
 			return
 		}
-		_, err = p.bw.Write(chunk)
+		_, err = conn.bw.Write(chunk)
 		if err != nil {
 			return
 		}
-		err = p.bw.Flush()
+		err = conn.bw.Flush()
 		if err != nil {
 			return
 		}
-		p.writesequencenum += uint32(len(chunk))
+		conn.writesequencenum += uint32(len(chunk))
 		//log.Debug(">>>>> chunk ", len(chunk), " reset ", len(reset))
 	}
 
@@ -265,10 +260,10 @@ func (c *RtmpChunk) String() string {
 	return fmt.Sprintf("chunkid:%v timestamp:%v delta:%v msg_length:%v msg_type:%v stream_id:%v ext:%v body:%v", c.chunkid, c.timestamp, c.delta, c.length, c.mtype, c.streamid, c.exttimestamp, c.body.Len())
 }
 
-func readMessage0(p *RtmpNetConnection) (msg RtmpMessage, err error) {
-	tmp := p.buffer
-	chunkhead, err := p.br.ReadByte()
-	p.sequencenum += 1
+func readMessage0(conn *RtmpNetConnection) (msg RtmpMessage, err error) {
+	tmp := conn.buffer
+	chunkhead, err := conn.br.ReadByte()
+	conn.sequencenum += 1
 	if err != nil {
 		return nil, err
 	}
@@ -276,27 +271,27 @@ func readMessage0(p *RtmpNetConnection) (msg RtmpMessage, err error) {
 	fmt := (chunkhead & 0xc0) >> 6     //块类型
 	switch csid {
 	case 0:
-		u8, err := p.br.ReadByte()
-		p.sequencenum += 1
+		u8, err := conn.br.ReadByte()
+		conn.sequencenum += 1
 		if err != nil {
 			return nil, err
 		}
 		csid = 64 + uint32(u8)
 	case 1:
 		tmp.Reset()
-		if _, err = io.CopyN(tmp, p.br, 2); err != nil {
+		if _, err = io.CopyN(tmp, conn.br, 2); err != nil {
 			return
 		}
-		p.sequencenum += 2
+		conn.sequencenum += 2
 		u16 := tmp.Bytes()
 		csid = 64 + uint32(u16[0]) + 256*uint32(u16[1])
 	}
 	var chunk *RtmpChunk
 	var exist bool
-	if chunk, exist = p.rchunks[csid]; !exist {
+	if chunk, exist = conn.rchunks[csid]; !exist {
 		if fmt == 0 {
 			chunk = &RtmpChunk{csid, 0, 0, 0, 0, 0, false, bytes.NewBuffer(nil)}
-			p.rchunks[csid] = chunk
+			conn.rchunks[csid] = chunk
 		} else {
 			return nil, ErrorChunkType
 		}
@@ -304,10 +299,10 @@ func readMessage0(p *RtmpNetConnection) (msg RtmpMessage, err error) {
 	switch fmt {
 	case 0: //11字节头
 		tmp.Reset()
-		if _, err = io.CopyN(tmp, p.br, 11); err != nil {
+		if _, err = io.CopyN(tmp, conn.br, 11); err != nil {
 			return
 		}
-		p.sequencenum += 11
+		conn.sequencenum += 11
 		buf := tmp.Bytes()
 		chunk.timestamp = util.BigEndian.Uint24(buf[0:3]) //type=0的时间戳为绝对时间，其他的都为相对前一个chunk的时间
 		chunk.length = util.BigEndian.Uint24(buf[3:6])
@@ -315,10 +310,10 @@ func readMessage0(p *RtmpNetConnection) (msg RtmpMessage, err error) {
 		chunk.streamid = util.LittleEndian.Uint32(buf[7:11])
 		if chunk.timestamp >= 0x00ffffff {
 			tmp.Reset()
-			if _, err = io.CopyN(tmp, p.br, 4); err != nil {
+			if _, err = io.CopyN(tmp, conn.br, 4); err != nil {
 				return nil, err
 			}
-			p.sequencenum += 4
+			conn.sequencenum += 4
 			chunk.exttimestamp = true
 			chunk.timestamp = util.BigEndian.Uint32(tmp.Bytes())
 		}
@@ -327,10 +322,10 @@ func readMessage0(p *RtmpNetConnection) (msg RtmpMessage, err error) {
 	case 1: //7字节头
 
 		tmp.Reset()
-		if _, err = io.CopyN(tmp, p.br, 7); err != nil {
+		if _, err = io.CopyN(tmp, conn.br, 7); err != nil {
 			return
 		}
-		p.sequencenum += 7
+		conn.sequencenum += 7
 		buf := tmp.Bytes()
 		delta := util.BigEndian.Uint24(buf[0:3])
 		chunk.delta = delta
@@ -338,10 +333,10 @@ func readMessage0(p *RtmpNetConnection) (msg RtmpMessage, err error) {
 		chunk.mtype = buf[6]
 		if delta >= 0x00ffffff {
 			tmp.Reset()
-			if _, err := io.CopyN(tmp, p.br, 4); err != nil {
+			if _, err := io.CopyN(tmp, conn.br, 4); err != nil {
 				return nil, err
 			}
-			p.sequencenum += 4
+			conn.sequencenum += 4
 			chunk.exttimestamp = true
 			delta = util.BigEndian.Uint32(tmp.Bytes())
 			chunk.delta = delta
@@ -351,19 +346,19 @@ func readMessage0(p *RtmpNetConnection) (msg RtmpMessage, err error) {
 	case 2: //3字节头
 
 		tmp.Reset()
-		if _, err = io.CopyN(tmp, p.br, 3); err != nil {
+		if _, err = io.CopyN(tmp, conn.br, 3); err != nil {
 			return
 		}
-		p.sequencenum += 3
+		conn.sequencenum += 3
 		buf := tmp.Bytes()
 		delta := util.BigEndian.Uint24(buf[0:3])
 		chunk.delta = delta
 		if delta >= 0x00ffffff {
 			tmp.Reset()
-			if _, err := io.CopyN(tmp, p.br, 4); err != nil {
+			if _, err := io.CopyN(tmp, conn.br, 4); err != nil {
 				return nil, err
 			}
-			p.sequencenum += 4
+			conn.sequencenum += 4
 			chunk.exttimestamp = true
 			delta = util.BigEndian.Uint32(tmp.Bytes())
 			chunk.delta = delta
@@ -382,21 +377,21 @@ func readMessage0(p *RtmpNetConnection) (msg RtmpMessage, err error) {
 	}
 	nRead := chunk.body.Len()
 	size := int(chunk.length) - nRead
-	if size > p.readChunkSize {
-		size = p.readChunkSize
+	if size > conn.readChunkSize {
+		size = conn.readChunkSize
 	}
-	i, err := io.CopyN(chunk.body, p.br, int64(size))
+	i, err := io.CopyN(chunk.body, conn.br, int64(size))
 	if err != nil {
 		return
 	}
-	p.sequencenum += uint32(i)
+	conn.sequencenum += uint32(i)
 	if chunk.body.Len() == int(chunk.length) {
 		log.Debug("chunk", chunk)
 		msg = decodeRtmpMessage1(chunk)
 		chunk.body.Reset()
 		return
 	}
-	return readMessage0(p)
+	return readMessage0(conn)
 }
 
 func sendChunkSize(conn *RtmpNetConnection, size uint32) error {
@@ -672,14 +667,18 @@ func sendMetaData(conn *RtmpNetConnection, data *MediaFrame) error {
 	return writeMessage(conn, msg)
 }
 
-func sendFullVideo(conn *RtmpNetConnection, video *MediaFrame) (err error) {
-	//log.Info("=====Frame2 video", video)
+func updateWriteSeq(conn *RtmpNetConnection) {
 	if conn.writesequencenum > conn.bandwidth {
 		conn.totalwritebytes += conn.writesequencenum
 		conn.writesequencenum = 0
 		sendAck(conn, conn.totalwritebytes)
 		sendPing(conn)
 	}
+}
+
+func sendFullVideo(conn *RtmpNetConnection, video *MediaFrame) (err error) {
+	//log.Info("=====Frame2 video", video)
+	updateWriteSeq(conn)
 	if conn.writeChunkSize > RTMP_MAX_CHUNK_SIZE {
 		err = ChunkError
 		return
@@ -742,12 +741,7 @@ func sendFullVideo(conn *RtmpNetConnection, video *MediaFrame) (err error) {
 
 func sendFullAudio(conn *RtmpNetConnection, audio *MediaFrame) (err error) {
 	//log.Info("=====Frame2 audio", audio)
-	if conn.writesequencenum > conn.bandwidth {
-		conn.totalwritebytes += conn.writesequencenum
-		conn.writesequencenum = 0
-		sendAck(conn, conn.totalwritebytes)
-		sendPing(conn)
-	}
+	updateWriteSeq(conn)
 	if conn.writeChunkSize > RTMP_MAX_CHUNK_SIZE {
 		err = ChunkError
 		return
@@ -954,12 +948,7 @@ func flush(conn *RtmpNetConnection) (err error) {
 	b := conn.w_buffer.Bytes()
 	conn.w_buffer.Reset()
 	_, err = conn.conn.Write(b)
-	if conn.writesequencenum > conn.bandwidth {
-		conn.totalwritebytes += conn.writesequencenum
-		conn.writesequencenum = 0
-		sendAck(conn, conn.totalwritebytes)
-		sendPing(conn)
-	}
+	updateWriteSeq(conn)
 	return
 }
 
@@ -976,11 +965,6 @@ func write(conn *RtmpNetConnection, b []byte) (err error) {
 	//_, err = conn.w_buffer.WriteTo(conn.conn)
 	conn.w_buffer.Reset()
 	_, err = conn.conn.Write(b)
-	if conn.writesequencenum > conn.bandwidth {
-		conn.totalwritebytes += conn.writesequencenum
-		conn.writesequencenum = 0
-		sendAck(conn, conn.totalwritebytes)
-		sendPing(conn)
-	}
+	updateWriteSeq(conn)
 	return
 }

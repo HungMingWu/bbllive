@@ -63,11 +63,7 @@ const (
 
 )
 
-type Infomation map[string]interface{}
 type Args interface{}
-
-type SharedObject interface {
-}
 
 type RtmpNetStream struct {
 	conn         *RtmpNetConnection
@@ -80,8 +76,6 @@ type RtmpNetStream struct {
 	mode         int
 	vkfsended    bool
 	akfsended    bool
-	vsend_time   uint32
-	asend_time   uint32
 	notify       chan *int
 	obj          *StreamObject
 	streamName   string
@@ -157,6 +151,8 @@ func (s *RtmpNetStream) writeLoop() {
 		obj    *StreamObject
 		gop    *MediaGop
 		err    error
+		//vsend_time uint32
+		//asend_time uint32
 	)
 	obj = s.obj
 	for {
@@ -173,10 +169,10 @@ func (s *RtmpNetStream) writeLoop() {
 				for _, frame := range frames {
 					//log.Info("=====Frame1", frame, *idx)
 					if frame.Type == RTMP_MSG_VIDEO {
-						s.vsend_time = frame.Timestamp
+						//vsend_time = frame.Timestamp
 						err = s.sendVideo(frame)
 					} else if frame.Type == RTMP_MSG_AUDIO {
-						s.asend_time = frame.Timestamp
+						//asend_time = frame.Timestamp
 						err = s.sendAudio(frame)
 					}
 					if err != nil {
@@ -186,7 +182,7 @@ func (s *RtmpNetStream) writeLoop() {
 				if err == nil {
 					err = flush(s.conn)
 				}
-				//log.Info(s.conn.remoteAddr, "V", s.vsend_time, "ms A", s.asend_time, "ms A-V", int64(s.asend_time)-int64(s.vsend_time), "ms")
+				//log.Info(s.conn.remoteAddr, "V", vsend_time, "ms A", asend_time, "ms A-V", int64(asend_time)-int64(vsend_time), "ms")
 			}
 		}
 	}
@@ -194,16 +190,6 @@ func (s *RtmpNetStream) writeLoop() {
 
 func (s *RtmpNetStream) StreamObject() *StreamObject {
 	return s.obj
-}
-
-func (s *RtmpNetStream) BufferTime() time.Duration {
-	return s.bufferTime
-}
-func (s *RtmpNetStream) BytesLoaded() uint64 {
-	return s.bufferLoad
-}
-func (s *RtmpNetStream) BufferLength() uint64 {
-	return s.bufferLength
 }
 
 func (s *RtmpNetStream) sendVideo(video *MediaFrame) error {

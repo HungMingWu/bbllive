@@ -201,34 +201,26 @@ func (m *StreamObject) WriteFrame(s *MediaFrame) (err error) {
 }
 
 func (m *StreamObject) Close() {
-	removeObject(m.name)
+	removeObject(m)
 	close(m.notify)
 }
 func (m *StreamObject) loop(timeout time.Duration) {
 	log.Info(m.name, "stream object is runing")
 	defer log.Info(m.name, "stream object is stopped")
-	var (
-		opened bool
-		idx    *int
-		w      NetStream
-		err    error
-		nsubs  = []NetStream{}
-		subs   = []NetStream{}
-	)
 	defer m.clear()
 	for {
 		select {
-		case idx, opened = <-m.notify:
+		case idx, opened := <-m.notify:
 			if !opened {
 				return
 			}
+			var nsubs []NetStream
 			m.sublock.Lock()
-			nsubs = nsubs[0:0]
-			subs = m.subs[:]
+			var subs = m.subs
 			m.sublock.Unlock()
 			log.Info("players", m.name, len(subs))
-			for _, w = range subs {
-				if err = w.Notify(idx); err != nil {
+			for _, w := range subs {
+				if err := w.Notify(idx); err != nil {
 					log.Error(w, err)
 					w.Close()
 				} else {

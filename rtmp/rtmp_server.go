@@ -178,6 +178,6 @@ func addObject(obj *StreamObject) {
 	objects.Set(obj.name, obj)
 }
 
-func removeObject(name string) {
-	objects.Remove(name)
+func removeObject(obj *StreamObject) {
+	objects.Remove(obj.name)
 }
